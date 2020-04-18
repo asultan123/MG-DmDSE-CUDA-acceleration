@@ -492,6 +492,26 @@ float* loadPerfTable(unsigned int& coefficientCount, unsigned int peCount, unsig
   return perfTable;
 }
 
+// __global__ void transposeCoalesced(float *odata, const float *idata)
+// {
+//   __shared__ float tile[TILE_DIM][TILE_DIM];
+
+//   int x = blockIdx.x * TILE_DIM + threadIdx.x;
+//   int y = blockIdx.y * TILE_DIM + threadIdx.y;
+//   int width = gridDim.x * TILE_DIM;
+
+//   for (int j = 0; j < TILE_DIM; j += BLOCK_ROWS)
+//      tile[threadIdx.y+j][threadIdx.x] = idata[(y+j)*width + x];
+
+//   __syncthreads();
+
+//   x = blockIdx.y * TILE_DIM + threadIdx.x;  // transpose block offset
+//   y = blockIdx.x * TILE_DIM + threadIdx.y;
+
+//   for (int j = 0; j < TILE_DIM; j += BLOCK_ROWS)
+//      odata[(y+j)*width + x] = tile[threadIdx.x][threadIdx.y + j];
+// }
+
 
 // Kernel function to add the elements of two arrays
 __global__ void t_mult(float *designSpaceTensor, float *perfTable, float* latencyTensor, int designPointsCount,int peCount,int funcCount)
@@ -510,6 +530,47 @@ __global__ void t_mult(float *designSpaceTensor, float *perfTable, float* latenc
   }
 }
 
+__global__ void t_vreduce_sum(float* latencyTensor, float* aggregateLatencyMatrix, int designPointsCount,int peCount,int funcCount)
+{
+  int designPointSize = peCount*funcCount;
+  int thrdDesignPointIndex = blockIdx.x * blockDim.x + threadIdx.x;
+  int globalIndex = blockIdx.y*designPointSize + thrdDesignPointIndex;
+  int stride = peCount;
+  if(thrdDesignPointIndex < peCount)
+  {
+    float sum = 0;
+    for (int dpIdx = globalIndex, perfIdx = thrdDesignPointIndex; perfIdx < designPointSize; dpIdx += stride, perfIdx += stride)
+    {
+        sum += latencyTensor[dpIdx];
+    }
+    //naive transpose horrible performance due no coalescing
+    aggregateLatencyMatrix[thrdDesignPointIndex*designPointsCount + blockIdx.y] = sum;
+  }
+}
+
+__global__ void m_max(float* aggregateLatencyMatrix, float* maxLatencyVector, int designPointsCount,int peCount)
+{
+  int index = blockIdx.x * blockDim.x + threadIdx.x;
+  int stride = designPointsCount;
+  if(index < designPointsCount)
+  {
+    float max = 0;
+    for (int i = index; i < designPointsCount*peCount; i += stride)
+    {
+      float mVal = aggregateLatencyMatrix[i];
+
+      if(max < mVal)
+      {
+        max = mVal;
+      }
+
+      __syncthreads();
+    }
+
+    maxLatencyVector[index] = max;
+  }
+}
+
 float* createAndSetCudaManagedMemory(unsigned int size)
 {
   float* mem; 
@@ -524,30 +585,9 @@ float* createAndSetCudaManagedMemory(unsigned int size)
   return mem;
 }
 
-int main(void)
+void validateLatencyTensor(float* latencyTensor, float* designSpaceTensor, float* perfTable, unsigned int designPointsCount, unsigned int funcCount, unsigned int peCount)
 {
-  
-  unsigned int designPointsCount;
-  unsigned int peCount;
-  unsigned int funcCount;
-  unsigned int coefficientCount;
-
-  float* designSpaceTensor = loadDSTensor(designPointsCount, peCount, funcCount);
-  float* perfTable = loadPerfTable(coefficientCount, peCount, funcCount);
-
-  unsigned int designSpaceSize = designPointsCount*peCount*funcCount;
   unsigned int designPointSize = peCount*funcCount;
-
-  float* latencyTensor = createAndSetCudaManagedMemory(designSpaceSize);
-  
-  dim3 dimGrid;
-  unsigned int threadCount = 32;
-  dimGrid.x = (peCount+(threadCount-1))/threadCount;
-  dimGrid.y = designPointsCount;
-
-  t_mult KERNEL_ARG2(dimGrid,threadCount)(designSpaceTensor,perfTable,latencyTensor,designPointsCount,peCount,funcCount);
-  cudaDeviceSynchronize();
-
   for(int dpIdx = 0; dpIdx < designPointsCount; dpIdx++)
   {
     for(int funcTypeIdx = 0; funcTypeIdx<funcCount; funcTypeIdx++)
@@ -561,8 +601,82 @@ int main(void)
       }
     }
   }
+}
 
 
+void validateAggregateLatencyMatrix(float* latencyTensor, float* aggregateLatencyMatrix, unsigned int designPointsCount, unsigned int funcCount, unsigned int peCount)
+{
+  unsigned int designPointSize = peCount*funcCount;
+  for(int dpIdx = 0; dpIdx < designPointsCount; dpIdx++)
+  {
+    for(int peIndex = 0; peIndex<peCount; peIndex++)
+    {
+      float sum = 0;
+      for(int funcTypeIdx = 0; funcTypeIdx<funcCount; funcTypeIdx++)
+      {
+        unsigned int gidx = dpIdx*designPointSize + funcTypeIdx*peCount + peIndex;
+        sum += latencyTensor[gidx];
+      }
+      assert((sum - aggregateLatencyMatrix[peIndex*designPointsCount + dpIdx]) < 0.001);
+    }
+  }
+}
+
+void validateMaxLatencyVector(float* aggregateLatencyMatrix, float* latencyVector, unsigned int designPointsCount, unsigned int peCount)
+{
+  for(int dpIdx = 0; dpIdx < designPointsCount; dpIdx++)
+  {
+    float max = 0;
+    for(int peIndex = 0; peIndex<peCount; peIndex++)
+    {
+      float val = aggregateLatencyMatrix[peIndex*designPointsCount + peIndex];
+      if(val > max)
+      {
+        max = val;
+      }
+    }
+    assert((max - latencyVector[dpIdx]) < 0.001);
+  }
+}
+
+int main(void)
+{
+  
+  unsigned int designPointsCount;
+  unsigned int peCount;
+  unsigned int funcCount;
+  unsigned int coefficientCount;
+
+  float* designSpaceTensor = loadDSTensor(designPointsCount, peCount, funcCount);
+  float* perfTable = loadPerfTable(coefficientCount, peCount, funcCount);
+
+  unsigned int designSpaceSize = designPointsCount*peCount*funcCount;
+
+  float* latencyTensor = createAndSetCudaManagedMemory(designSpaceSize);
+  float* aggregateLatencyMatrix = createAndSetCudaManagedMemory(designPointsCount*peCount);
+  float* maxLatencyVector = createAndSetCudaManagedMemory(designPointsCount);
+  
+  dim3 dimGrid;
+  unsigned int threadCount = 32;
+  dimGrid.x = (peCount+(threadCount-1))/threadCount;
+  dimGrid.y = designPointsCount;
+
+  t_mult KERNEL_ARG2(dimGrid,threadCount)(designSpaceTensor,perfTable,latencyTensor,designPointsCount,peCount,funcCount);
+  cudaDeviceSynchronize();
+
+  // validateLatencyTensor(latencyTensor, designSpaceTensor, perfTable, designPointsCount, funcCount, peCount);
+
+  t_vreduce_sum KERNEL_ARG2(dimGrid,threadCount)(latencyTensor, aggregateLatencyMatrix, designPointsCount, peCount, funcCount);
+  cudaDeviceSynchronize();
+  // validateAggregateLatencyMatrix(latencyTensor, aggregateLatencyMatrix, designPointsCount, funcCount, peCount);
+
+  threadCount = 32;
+  unsigned int blockCount = (designPointsCount+(threadCount-1))/threadCount;
+
+  m_max KERNEL_ARG2(blockCount,threadCount)(aggregateLatencyMatrix, maxLatencyVector, designPointsCount, peCount);
+  cudaDeviceSynchronize();
+
+  // validateMaxLatencyVector(aggregateLatencyMatrix, maxLatencyVector, designPointsCount, peCount);
 
   // auto graph = loadcoAuthors();
   // int m,n;
