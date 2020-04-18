@@ -1,0 +1,7 @@
+# All PEsCands
+# ARM7 AND AbsoluteDifference Accumulate AccumulateSquared AccumulateWeighted ArithmeticSubtraction Conv3mul3 Conv3mul3_2in Conv5mul5 Conv5mul5_2in CannyEdgeDetector ChannelCombine ChannelExtract ColorConvert Dilate3mul3 EqualizeHistogram Erode3mul3 Blur5mul5 HarrisCorners IntegralImage Magnitude MeanSD Median3mul3 MinMax OR OpticalFlowPyramid Phase ScaleImage Sobel5mul5 Thresholding WarpAffine WarpPerspective CannyEdgeDetectorRest HarrisCornersRest OpticalFlowPyramidRest Sobel3mul3 
+1 0 0 0 0 0 0 0 0 0 0 1 0 0 0 0 0 0 0 1 0 0 0 0 0 0 1 0 0 0 0 0 0 0 0 0 0 
+
+# PEs: ARM7 OpticalFlowPyramid CannyEdgeDetector HarrisCorners 
+0 11 19 26 
+

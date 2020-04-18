@@ -1,0 +1,43 @@
+# Functions
+# AND AbsoluteDifference Accumulate AccumulateSquared AccumulateWeighted ArithmeticSubtraction Box3mul3 CannyEdgeDetector ChannelCombine ChannelExtract ColorConvert Conv3mul3 Conv5mul5 Dilate3mul3 EqualizeHistogram Erode3mul3 Gaussian3mul3 GaussianPyramid HarrisCorners IntegralImage LaplacianPyramid Magnitude MeanSD Median3mul3 MinMax OR OpticalFlowPyramid Phase ScaleImage Sobel5mul5 Thresholding WarpAffine WarpPerspective CannyEdgeDetectorRest Conv5mul5_2in HarrisCornersRest OpticalFlowPyramidRest Sobel3mul3 
+# PEs
+# ARM7 Conv5mul5_2in CannyEdgeDetector HarrisCorners 
+
+0 0 0 0 
+0 0 0 0 
+0 0 0 0 
+0 0 0 0 
+0 0 0 0 
+0 0 0 0 
+0 0 0 0 
+0 0 0 0 
+921600 0 0 0 
+2764800 0 0 0 
+1843200 0 0 0 
+0 0 0 0 
+0 0 0 0 
+0 0 0 0 
+921600 0 0 0 
+0 0 0 0 
+0 0 0 0 
+0 0 0 0 
+0 0 0 0 
+0 0 0 0 
+0 0 0 0 
+0 0 0 0 
+0 0 0 0 
+0 0 0 0 
+0 0 0 0 
+0 0 0 0 
+0 0 0 0 
+0 0 0 0 
+0 0 0 0 
+0 0 0 0 
+0 0 0 0 
+0 0 0 0 
+0 0 0 0 
+0 0 0 0 
+0 0 0 0 
+0 0 0 0 
+0 0 0 0 
+0 0 0 0 
