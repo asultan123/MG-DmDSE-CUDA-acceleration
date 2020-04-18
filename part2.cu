@@ -506,11 +506,6 @@ __global__ void t_mult(float *designSpaceTensor, float *perfTable, float* latenc
     for (int dpIdx = globalIndex, perfIdx = thrdDesignPointIndex; perfIdx < designPointSize; dpIdx += stride, perfIdx += stride)
     {
         latencyTensor[dpIdx] = perfTable[perfIdx] + designSpaceTensor[dpIdx]*perfTable[perfIdx + perfTableC1Offset];
-        // if(threadIdx.x == 0)
-        // {
-        //   printf("G %d, dpIdx %d\n",globalIndex, dpIdx);
-        // }
-        // __syncthreads();
     }
   }
 }
@@ -541,6 +536,7 @@ int main(void)
   float* perfTable = loadPerfTable(coefficientCount, peCount, funcCount);
 
   unsigned int designSpaceSize = designPointsCount*peCount*funcCount;
+  unsigned int designPointSize = peCount*funcCount;
 
   float* latencyTensor = createAndSetCudaManagedMemory(designSpaceSize);
   
@@ -551,6 +547,21 @@ int main(void)
 
   t_mult KERNEL_ARG2(dimGrid,threadCount)(designSpaceTensor,perfTable,latencyTensor,designPointsCount,peCount,funcCount);
   cudaDeviceSynchronize();
+
+  for(int dpIdx = 0; dpIdx < designPointsCount; dpIdx++)
+  {
+    for(int funcTypeIdx = 0; funcTypeIdx<funcCount; funcTypeIdx++)
+    {
+      for(int peIndex = 0; peIndex<peCount; peIndex++)
+      {
+        unsigned int gidx = dpIdx*designPointSize + funcTypeIdx*peCount + peIndex;
+        unsigned int pidx = funcTypeIdx*peCount + peIndex;
+        float expectedVal = designSpaceTensor[gidx]*perfTable[pidx+designPointSize] + perfTable[pidx];
+        assert((latencyTensor[gidx] - expectedVal) < 0.001);
+      }
+    }
+  }
+
 
 
   // auto graph = loadcoAuthors();
